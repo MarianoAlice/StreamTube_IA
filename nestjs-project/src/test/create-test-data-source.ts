@@ -1,4 +1,9 @@
 import { DataSource, EntitySchema, MigrationInterface } from 'typeorm';
+import { Channel } from '../channels/entities/channel.entity';
+import { Video } from '../videos/video.entity';
+
+type EntityClass = abstract new (...args: never[]) => object;
+type TestEntity = EntityClass | string | EntitySchema<Record<string, unknown>>;
 
 interface TestDataSourceOptions {
   synchronize?: boolean;
@@ -6,7 +11,7 @@ interface TestDataSourceOptions {
 }
 
 export function createTestDataSource(
-  entities: (Function | string | EntitySchema<any>)[],
+  entities: TestEntity[],
   options: TestDataSourceOptions = {},
 ): DataSource {
   const { synchronize = true, migrations } = options;
@@ -17,13 +22,31 @@ export function createTestDataSource(
     username: process.env.DB_USERNAME ?? 'streamtube',
     password: process.env.DB_PASSWORD ?? 'streamtube',
     database: process.env.DB_DATABASE ?? 'streamtube',
-    entities,
+    entities: withVideoRelation(entities),
     synchronize,
     ...(migrations !== undefined && { migrations, migrationsRun: false }),
   });
 }
 
+function withVideoRelation(entities: TestEntity[]): TestEntity[] {
+  if (entities.includes(Channel) && !entities.includes(Video)) {
+    return [...entities, Video];
+  }
+  return entities;
+}
+
 export async function cleanAllTables(dataSource: DataSource): Promise<void> {
+  await dataSource.query(`
+    DO $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name = 'videos'
+      ) THEN
+        DELETE FROM "videos";
+      END IF;
+    END $$;
+  `);
   await dataSource.query('DELETE FROM "refresh_tokens"');
   await dataSource.query('DELETE FROM "verification_tokens"');
   await dataSource.query('DELETE FROM "channels"');

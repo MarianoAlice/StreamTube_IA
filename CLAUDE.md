@@ -23,7 +23,7 @@ See `docs/diagrams/software-arch.mermaid` for the full diagram. Key containers:
 - **Video Worker** (FFmpeg) → consumes jobs from queue, processes videos, updates DB and storage
 - **Database** (PostgreSQL) → users, channels, videos, comments, likes
 - **Object Storage** (S3/MinIO) → video files and thumbnails
-- **Message Queue** (TBD) → video processing job queue
+- **Message Queue** (Redis, BullMQ) → `video.processing` jobs consumed by the video worker
 - **Email Service** (SMTP) → account confirmation and password recovery
 
 ## Docker Networking
@@ -36,6 +36,17 @@ Inside a container, `localhost` refers to the container itself, not the host mac
 - **Wrong:** `DB_HOST=localhost`
 
 This applies to all environment variables, configuration files, and code that references service hosts.
+
+## Videos
+
+Upload, processing, playback, and download are implemented in `nestjs-project`.
+
+- `POST /videos/uploads` creates a `draft` row and returns presigned multipart URLs. The API does not receive the file bytes. The limit is 10GB.
+- `POST /videos/:id/complete` finishes the multipart upload, enqueues a `video.processing` job with `{ videoId }`, and sets `status` to `processing`. Only the channel owner can complete.
+- The worker is a separate Nest process (`nestjs-project/src/worker.ts`, Compose service `video-worker`). It downloads the object, runs FFmpeg, stores a thumbnail, and sets `ready` with `duration_seconds` and `metadata`. `failed` is written only after the queue retries end, and the row is kept. A second delivery of a video that is already `ready` does not change it.
+- `GET /videos/:id`, `GET /videos/:id/playback`, and `GET /videos/:id/download` are anonymous. Playback and download return a presigned GET only when `status` is `ready`; otherwise the code is `VIDEO_NOT_READY`. The client sends `Range` to storage.
+- Redis is the broker (`REDIS_HOST=redis`). Local object storage is MinIO (`STORAGE_ENDPOINT=http://minio:9000`); production S3 omits `STORAGE_ENDPOINT`. Buckets are `videos` and `thumbnails`, and the object key is the video id.
+- FFmpeg is installed in `Dockerfile.worker` only. The API image does not run it.
 
 ## Working Principles
 

@@ -48,3 +48,37 @@ export class TokenReuseDetectedException extends DomainException {
     );
   }
 }
+
+export class UploadTooLargeException extends DomainException {
+  constructor() {
+    super('UPLOAD_TOO_LARGE', 413, 'Upload exceeds the 10GB limit');
+  }
+}
+
+export class VideoNotFoundException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_FOUND', 404, 'Video not found');
+  }
+}
+
+export class NotChannelOwnerException extends DomainException {
+  constructor() {
+    super('NOT_CHANNEL_OWNER', 403, 'You do not own this video');
+  }
+}
+
+export class UploadNotCompletableException extends DomainException {
+  constructor() {
+    super(
+      'UPLOAD_NOT_COMPLETABLE',
+      409,
+      'Upload cannot be completed unless the video is a draft',
+    );
+  }
+}
+
+export class VideoNotReadyException extends DomainException {
+  constructor() {
+    super('VIDEO_NOT_READY', 409, 'Video is not ready');
+  }
+}

@@ -6,6 +6,9 @@ const requiredEnv = {
   DB_NAME: 'db',
   JWT_SECRET: 'secret',
   JWT_REFRESH_SECRET: 'refresh-secret',
+  REDIS_HOST: 'redis',
+  VIDEOS_BUCKET: 'videos',
+  THUMBNAILS_BUCKET: 'thumbnails',
 };
 
 const validate = (env: Record<string, string>) =>

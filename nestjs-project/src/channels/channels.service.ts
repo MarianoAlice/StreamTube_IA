@@ -7,13 +7,26 @@ const PG_UNIQUE_VIOLATION = '23505';
 const NICKNAME_COLUMN = 'nickname';
 const MAX_RETRIES = 5;
 
+function readUnknown(value: unknown): unknown {
+  return value;
+}
+
+function pgErrorFields(value: unknown): { code?: unknown; detail?: unknown } {
+  if (typeof value !== 'object' || value === null) return {};
+  const record = value as Record<string, unknown>;
+  return { code: record.code, detail: record.detail };
+}
+
 function isPgUniqueViolationOnColumn(err: unknown, column: string): boolean {
   if (!(err instanceof QueryFailedError)) return false;
-  const e = err as any;
+  const fromDriver = pgErrorFields(readUnknown(err.driverError));
+  const fromError = pgErrorFields(err);
+  const code = fromDriver.code ?? fromError.code;
+  const detail = fromDriver.detail ?? fromError.detail;
   return (
-    e.code === PG_UNIQUE_VIOLATION &&
-    typeof e.detail === 'string' &&
-    e.detail.includes(column)
+    code === PG_UNIQUE_VIOLATION &&
+    typeof detail === 'string' &&
+    detail.includes(column)
   );
 }
 
@@ -57,6 +70,12 @@ export class ChannelsService {
       throw new Error(
         'Nickname conflict could not be resolved after max retries',
       );
+    });
+  }
+
+  async findByUserId(userId: string): Promise<Channel | null> {
+    return this.dataSource.getRepository(Channel).findOne({
+      where: { user_id: userId },
     });
   }
 }

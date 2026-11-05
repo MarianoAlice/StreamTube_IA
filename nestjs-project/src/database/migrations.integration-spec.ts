@@ -5,6 +5,7 @@ import { RefreshToken } from '../auth/entities/refresh-token.entity';
 import { VerificationToken } from '../auth/entities/verification-token.entity';
 import { CreateUsersAndChannels1775687773260 } from './migrations/1775687773260-CreateUsersAndChannels';
 import { CreateAuthTokens1777579850478 } from './migrations/1777579850478-CreateAuthTokens';
+import { CreateVideos1793804540640 } from './migrations/1793804540640-CreateVideos';
 import { createTestDataSource } from '../test/create-test-data-source';
 
 const MANAGED_TABLES = [
@@ -31,18 +32,32 @@ describe('Database migrations (integration)', () => {
 
     await dataSource.initialize();
 
+    await dataSource.query('DROP TABLE IF EXISTS "videos" CASCADE');
+    await dataSource.query('DROP TYPE IF EXISTS "public"."videos_status_enum"');
+
     await Promise.all([
       ...MANAGED_TABLES.map((table) =>
         dataSource.query(`DROP TABLE IF EXISTS "${table}" CASCADE`),
       ),
       dataSource.query(`DROP TABLE IF EXISTS "migrations" CASCADE`),
     ]);
+    await dataSource.query(
+      'DROP TYPE IF EXISTS "public"."verification_tokens_type_enum"',
+    );
+    await dataSource.query('DROP TYPE IF EXISTS "public"."videos_status_enum"');
   });
 
   afterAll(async () => {
     // The second test undoes the last migration, leaving token tables missing.
     // Re-apply so the shared DB is fully migrated when subsequent suites run.
     await dataSource.runMigrations();
+    const queryRunner = dataSource.createQueryRunner();
+    await queryRunner.connect();
+    try {
+      await new CreateVideos1793804540640().up(queryRunner);
+    } finally {
+      await queryRunner.release();
+    }
     await dataSource.destroy();
   });
 

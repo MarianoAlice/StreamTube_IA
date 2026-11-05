@@ -7,12 +7,16 @@
 After starting infrastructure, always confirm the containers are up before proceeding:
 
 ```bash
-docker compose ps   # all services must show status "running"
+docker compose ps   # db, redis, minio, and mailpit stay running; minio-init exits after creating buckets
 ```
 
 Then verify each infrastructure service is actually ready to accept connections — not just running:
 
 - **PostgreSQL:** `docker compose exec db pg_isready -U streamtube` — expect `accepting connections`
+- **Redis:** `docker compose exec redis redis-cli ping` — expect `PONG`
+- **MinIO:** `curl -f http://localhost:9000/minio/health/live` — expect HTTP 200
+
+`minio-init` creates the `videos` and `thumbnails` buckets and then exits. A completed one-shot container is the expected state, not a crash. `video-worker` is the FFmpeg process; do not start it unless the user asks to run the worker.
 
 Only start the NestJS dev server (`npm run start:dev`) when the user **explicitly** asks to run the application — never as part of "start the environment".
 
@@ -32,8 +36,13 @@ docker compose exec nestjs-api npm run start:dev
 ```
 
 Services:
-- `nestjs-api` — NestJS API, port `3000`
+- `nestjs-api` — NestJS API, port `3000`. Command stays `tail -f /dev/null` so the container is a shell for `exec`.
+- `video-worker` — same codebase, command `npm run start:worker`, FFmpeg installed in `Dockerfile.worker`
 - `db` — PostgreSQL 17, port `5432`, database `streamtube`, user/password `streamtube`
+- `redis` — Redis 7, hostname `redis`, no published port
+- `minio` — object storage, ports `9000` (API) and `9001` (console), hostname `minio`
+- `minio-init` — creates buckets `videos` and `thumbnails`, then exits
+- `mailpit` — SMTP `1025`, UI `8025`
 
 All verification and teardown commands run on the **host machine**:
 
@@ -62,6 +71,7 @@ docker compose down
 npm run start:dev                        # Dev server with hot-reload
 npm run build                            # Compile to dist/
 npm run start:prod                       # Run compiled build
+npm run start:worker                     # Video worker (separate process from the API)
 
 npm test                                 # Unit tests
 npm run test:watch                       # Unit tests in watch mode
@@ -148,13 +158,16 @@ NestJS with standard module structure. Source lives in `src/`, compiled output i
 
 - Each domain feature gets its own module (e.g., `UsersModule`, `VideosModule`) registered in `AppModule`
 - Controllers handle HTTP routing; Services hold business logic; both are scoped to their module
+- `VideosModule` owns the `videos` table, the upload and read endpoints, and the `video.processing` queue registration. The processor is provided only by `WorkerModule` (`src/worker.ts`), so the API process does not consume jobs
+- Video status is `draft`, `processing`, `ready`, or `failed`. `failed` is set only after BullMQ retries end. The public URL segment is the video UUID
+- Queue host is the Compose service `redis`. Storage host is the Compose service `minio` when `STORAGE_ENDPOINT` is set; omit that variable on AWS so the SDK uses S3
 
 ## Code Conventions
 
 - **TypeScript:** `nodenext` module resolution, `ES2023` target, `strictNullChecks` on, `noImplicitAny` off
 - **Decorators:** `emitDecoratorMetadata` + `experimentalDecorators` enabled — required for NestJS DI
 - **Prettier:** single quotes, trailing commas everywhere
-- **ESLint:** `no-explicit-any` allowed; `no-floating-promises` and `no-unsafe-argument` are warnings
+- **ESLint:** `no-explicit-any` is off. `no-floating-promises` and `no-unsafe-argument` are warnings. In `*.spec.ts`, `*.integration-spec.ts`, and `*.e2e-spec.ts`, `no-unsafe-assignment`, `no-unsafe-call`, `no-unsafe-member-access`, `no-unsafe-return`, and `unbound-method` are off, because Jest mocks and supertest bodies are typed as `any`. Production code keeps those rules.
 
 ## REST Conventions
 

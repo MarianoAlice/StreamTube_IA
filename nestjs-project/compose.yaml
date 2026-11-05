@@ -5,12 +5,80 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - 3000:3000
+    command: ["tail", "-f", "/dev/null"]
     volumes:
       - .:/home/node/app
+    environment:
+      REDIS_HOST: redis
+      STORAGE_ENDPOINT: http://minio:9000
     depends_on:
       db:
         condition: service_healthy
       mailpit:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+
+  video-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    command: ["npm", "run", "start:worker"]
+    volumes:
+      - .:/home/node/app
+    environment:
+      REDIS_HOST: redis
+      STORAGE_ENDPOINT: http://minio:9000
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ["node", "scripts/ensure-storage-buckets.js"]
+    volumes:
+      - .:/home/node/app
+    environment:
+      STORAGE_ENDPOINT: http://minio:9000
+      STORAGE_REGION: us-east-1
+      STORAGE_ACCESS_KEY_ID: minioadmin
+      STORAGE_SECRET_ACCESS_KEY: minioadmin
+      VIDEOS_BUCKET: videos
+      THUMBNAILS_BUCKET: thumbnails
+    depends_on:
+      minio:
         condition: service_started
 
   db:
@@ -33,4 +101,5 @@ services:
       - "1025:1025"
       - "8025:8025"
 
-
+volumes:
+  minio-data:

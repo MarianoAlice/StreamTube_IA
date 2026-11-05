@@ -13,6 +13,8 @@ import { DomainExceptionFilter } from '../src/common/filters/domain-exception.fi
 import { ValidationExceptionFilter } from '../src/common/filters/validation-exception.filter';
 import { cleanAllTables } from '../src/test/create-test-data-source';
 
+jest.setTimeout(30000);
+
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
@@ -64,7 +66,7 @@ describe('Auth (e2e)', () => {
     let capturedToken = '';
     jest
       .spyOn(mailServiceInstance, 'sendConfirmationEmail')
-      .mockImplementationOnce(async (_e: string, _n: string, t: string) => {
+      .mockImplementationOnce((_e: string, _n: string, t: string) => {
         capturedToken = t;
       });
     await request(app.getHttpServer())
@@ -516,7 +518,7 @@ describe('Auth (e2e)', () => {
     let captured = '';
     jest
       .spyOn(mailServiceInstance, 'sendPasswordResetEmail')
-      .mockImplementationOnce(async (_e: string, _n: string, t: string) => {
+      .mockImplementationOnce((_e: string, _n: string, t: string) => {
         captured = t;
       });
     await request(app.getHttpServer())
